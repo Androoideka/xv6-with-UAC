@@ -24,6 +24,7 @@ static Header *freep;
 void
 free(void *ap)
 {
+	if(ap == 0) return;
 	Header *bp, *p;
 
 	bp = (Header*)ap - 1;
@@ -87,4 +88,14 @@ malloc(uint nbytes)
 			if((p = morecore(nunits)) == 0)
 				return 0;
 	}
+}
+
+void*
+realloc(void *ptr, uint originalbytes, uint nbytes) { // the bytes represent the additional memory allocated
+	void *newPtr = malloc((originalbytes + nbytes) * sizeof(ptr));
+	if(ptr != 0) {
+		memmove(newPtr, ptr, originalbytes * sizeof(ptr));
+		free(ptr);
+	}
+	return newPtr;
 }

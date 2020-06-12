@@ -6,6 +6,11 @@
 #include "defs.h"
 #include "x86.h"
 #include "elf.h"
+#include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 int
 exec(char *path, char **argv)
@@ -18,6 +23,7 @@ exec(char *path, char **argv)
 	struct proghdr ph;
 	pde_t *pgdir, *oldpgdir;
 	struct proc *curproc = myproc();
+	int setuid = 0;
 
 	begin_op();
 
@@ -28,6 +34,18 @@ exec(char *path, char **argv)
 	}
 	ilock(ip);
 	pgdir = 0;
+	
+	if(!(ip->mode & 1) && (curproc->euid != ip->uid || !(ip->mode & (1 << 6)))) {
+		int flag = 0;
+		for(int i = 0; i < curproc->ngroups; i++) {
+			if(curproc->gids[i] == ip->gid && ip->mode & (1 << 3)) {
+				flag = 1;
+			}
+		}
+		if(flag != 1) {
+			goto bad;
+		}
+	}
 
 	// Check ELF header
 	if(readi(ip, (char*)&elf, 0, sizeof(elf)) != sizeof(elf))
@@ -56,6 +74,7 @@ exec(char *path, char **argv)
 		if(loaduvm(pgdir, (char*)ph.vaddr, ip, ph.off, ph.filesz) < 0)
 			goto bad;
 	}
+	setuid = ip->mode & (1 << 9);
 	iunlockput(ip);
 	end_op();
 	ip = 0;
@@ -99,6 +118,8 @@ exec(char *path, char **argv)
 	curproc->sz = sz;
 	curproc->tf->eip = elf.entry;  // main
 	curproc->tf->esp = sp;
+	if(setuid) curproc->euid = 0;
+	else curproc->euid = curproc->uid;
 	switchuvm(curproc);
 	freevm(oldpgdir);
 	return 0;

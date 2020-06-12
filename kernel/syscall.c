@@ -103,6 +103,17 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_getuid(void);
+extern int sys_geteuid(void);
+extern int sys_setuid(void);
+extern int sys_chmod(void);
+extern int sys_chown(void);
+extern int sys_clrscr(void);
+extern int sys_hideinp(void);
+extern int sys_showinp(void);
+extern int sys_lseek(void);
+extern int sys_trim(void);
+extern int sys_setgrps(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -126,6 +137,17 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_getuid]  sys_getuid,
+[SYS_geteuid] sys_geteuid,
+[SYS_setuid]  sys_setuid,
+[SYS_chmod]   sys_chmod,
+[SYS_chown]   sys_chown,
+[SYS_clrscr]  sys_clrscr,
+[SYS_hideinp] sys_hideinp,
+[SYS_showinp] sys_showinp,
+[SYS_lseek]   sys_lseek,
+[SYS_trim]    sys_trim,
+[SYS_setgrps] sys_setgrps
 };
 
 void

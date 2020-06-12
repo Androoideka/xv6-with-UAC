@@ -120,6 +120,29 @@ atoi(const char *s)
 	return n;
 }
 
+char*
+itoa(int val, char *str) {
+	int n;
+	
+	n = 0;
+	while(val != 0) {
+		str[n++] = val % 10;
+		val /= 10;
+	}
+	str[n] = 0;
+	return str;
+}
+
+int
+digitcount(int val) {
+	int digits = 0;
+	do {
+        digits++;
+        val /= 10;
+    } while (val);
+	return digits;
+}
+
 void*
 memmove(void *vdst, const void *vsrc, int n)
 {

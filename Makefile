@@ -2,6 +2,7 @@ B=bootloader
 K=kernel
 U=user
 T=tools
+C=cfg
 
 HDRS = \
 	$K/asm.h\
@@ -174,7 +175,7 @@ tags: $(OBJS) $K/entryother.S $U/_init
 $K/vectors.S: $T/vectors.pl
 	$T/vectors.pl > $K/vectors.S
 
-ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o $U/uauth.o $U/uauthgrp.o $U/ufile.o
 
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $@ $^
@@ -195,23 +196,40 @@ $T/mkfs: $T/mkfs.c $K/fs.h
 
 UPROGS=\
 	$U/_cat\
+	$U/_chgrp\
+	$U/_chmod\
+	$U/_chown\
 	$U/_echo\
+	$U/_finduser\
 	$U/_forktest\
+	$U/_getty\
 	$U/_grep\
+	$U/_groupadd\
 	$U/_init\
 	$U/_kill\
 	$U/_ln\
 	$U/_ls\
 	$U/_mkdir\
+	$U/_passwd\
+	$U/_procowners\
 	$U/_rm\
 	$U/_sh\
 	$U/_stressfs\
+	$U/_useradd\
+	$U/_usermod\
 	$U/_usertests\
+	$U/_writejunk\
 	$U/_wc\
 	$U/_zombie\
 
-fs.img: $T/mkfs README $(UPROGS)
-	$T/mkfs fs.img README $(UPROGS)
+CONFIGS=\
+	$C/passwd\
+	$C/group\
+	$C/issue\
+	$C/motd\
+
+fs.img: $T/mkfs README $(UPROGS) $(CONFIGS)
+	$T/mkfs fs.img README $(UPROGS) $(CONFIGS)
 
 clean: 
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \

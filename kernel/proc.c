@@ -130,6 +130,8 @@ userinit(void)
 		panic("userinit: out of memory?");
 	inituvm(p->pgdir, _binary_user_initcode_start, (int)_binary_user_initcode_size);
 	p->sz = PGSIZE;
+	p->uid = 0;
+	p->euid = 0;
 	memset(p->tf, 0, sizeof(*p->tf));
 	p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
 	p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
@@ -198,10 +200,17 @@ fork(void)
 	}
 	np->sz = curproc->sz;
 	np->parent = curproc;
+	np->uid = curproc->uid;
+	np->euid = curproc->euid;
+	np->ngroups = curproc->ngroups;
 	*np->tf = *curproc->tf;
 
 	// Clear %eax so that fork returns 0 in the child.
 	np->tf->eax = 0;
+
+	for(i = 0; i < MAXGROUPS; i++) {
+		np->gids[i] = curproc->gids[i];
+	}
 
 	for(i = 0; i < NOFILE; i++)
 		if(curproc->ofile[i])

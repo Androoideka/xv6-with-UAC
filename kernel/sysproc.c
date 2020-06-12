@@ -89,3 +89,50 @@ sys_uptime(void)
 	release(&tickslock);
 	return xticks;
 }
+
+int
+sys_getuid(void) {
+	return myproc()->uid;
+}
+
+int
+sys_geteuid(void) {
+	return myproc()->euid;
+}
+
+int
+sys_setuid(void) {
+	if(myproc()->euid == 0) {
+		int newid;
+		if(argint(0, &newid) < 0)
+			return -1;
+		myproc()->uid = newid;
+		myproc()->euid = newid;
+		return 0;
+	}
+	return -1;
+}
+
+int
+sys_setgrps(void) {
+	struct proc *curproc = myproc();
+
+	if(curproc->euid == 0) {
+		int ngroups;
+		int *gids;
+		if(argint(0, &ngroups) < 0 || argptr(1, (void*)&gids, ngroups*sizeof(*gids)) < 0)
+			return -1;
+		curproc->ngroups = ngroups;
+		if(ngroups > MAXGROUPS) {
+			curproc->ngroups = MAXGROUPS;
+		}
+		for(int i = 0; i < curproc->ngroups; i++) {
+			curproc->gids[i] = *(gids + i);
+		}
+		for(int i = curproc->ngroups; i < MAXGROUPS; i++) {
+			curproc->gids[i] = 0;
+		}
+		return 0;
+	}
+	return -1;
+}

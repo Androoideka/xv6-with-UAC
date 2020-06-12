@@ -33,6 +33,8 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+#define MAXGROUPS 32
+
 // Per-process state
 struct proc {
 	uint sz;                     // Size of process memory (bytes)
@@ -48,6 +50,10 @@ struct proc {
 	struct file *ofile[NOFILE];  // Open files
 	struct inode *cwd;           // Current directory
 	char name[16];               // Process name (debugging)
+	int uid;					 // User that is using the process
+	int euid;					 // Effective user that is using the process
+	int ngroups;                 // Number of groups the process's owner is a part of
+	int gids[MAXGROUPS];         // Groups that the process owner is a part of
 };
 
 // Process memory is laid out contiguously, low addresses first:

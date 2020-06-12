@@ -229,6 +229,9 @@ iupdate(struct inode *ip)
 	dip->minor = ip->minor;
 	dip->nlink = ip->nlink;
 	dip->size = ip->size;
+	dip->uid = ip->uid;
+	dip->gid = ip->gid;
+	dip->mode = ip->mode;
 	memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
 	log_write(bp);
 	brelse(bp);
@@ -302,6 +305,9 @@ ilock(struct inode *ip)
 		ip->minor = dip->minor;
 		ip->nlink = dip->nlink;
 		ip->size = dip->size;
+		ip->uid = dip->uid;
+		ip->gid = dip->gid;
+		ip->mode = dip->mode;
 		memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
 		brelse(bp);
 		ip->valid = 1;
@@ -442,6 +448,22 @@ stati(struct inode *ip, struct stat *st)
 	st->type = ip->type;
 	st->nlink = ip->nlink;
 	st->size = ip->size;
+	st->uid = ip->uid;
+	st->gid = ip->gid;
+	char map[3] = { 'r', 'w', 'x'};
+    for(int i = 0; i < 10; i++) {
+        st->mode[i] = '-';
+    }
+    if(st->type == T_DIR) {
+        st->mode[0] = 'd';
+    }
+    for(int i = 1; i < 10; i++) {
+		int shift = 1 << (9 - i);
+		if(ip->mode & shift) {
+			st->mode[i] = map[(i - 1) % 3];
+		}
+    }
+    st->mode[10] = 0;
 }
 
 // Read data from inode.
@@ -524,6 +546,18 @@ dirlookup(struct inode *dp, char *name, uint *poff)
 
 	if(dp->type != T_DIR)
 		panic("dirlookup not DIR");
+
+	if(!(dp->mode & 1) && (myproc()->euid != dp->uid || !(dp->mode & (1 << 6)))) {
+		int flag = 0;
+		for(int i = 0; i < myproc()->ngroups; i++) {
+			if(myproc()->gids[i] == dp->gid && dp->mode & (1 << 3)) {
+				flag = 1;
+			}
+		}
+		if(flag != 1) {
+			return 0;
+		}
+	}
 
 	for(off = 0; off < dp->size; off += sizeof(de)){
 		if(readi(dp, (char*)&de, off, sizeof(de)) != sizeof(de))

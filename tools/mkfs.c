@@ -36,13 +36,15 @@ uint rootino;
 uint homeino;
 uint binino;
 uint devino;
+uint etcino;
+uint rootuserino;
 
 void balloc(int);
 void wsect(uint, void*);
 void winode(uint, struct dinode*);
 void rinode(uint inum, struct dinode *ip);
 void rsect(uint sec, void *buf);
-uint ialloc(ushort type);
+uint ialloc(ushort type, int permission);
 void iappend(uint inum, void *p, int n);
 
 // convert to intel byte order
@@ -74,7 +76,7 @@ makedirs(void)
 	struct dirent de;
 
 	// /
-	rootino = ialloc(T_DIR);
+	rootino = ialloc(T_DIR, 0755);
 	assert(rootino == ROOTINO);
 
 	bzero(&de, sizeof(de));
@@ -88,7 +90,7 @@ makedirs(void)
 	iappend(rootino, &de, sizeof(de));
 
 	// /dev
-	devino = ialloc(T_DIR);
+	devino = ialloc(T_DIR, 0755);
 
 	bzero(&de, sizeof(de));
 	de.inum = xshort(devino);
@@ -106,7 +108,7 @@ makedirs(void)
 	iappend(rootino, &de, sizeof(de));
 
 	// /bin
-	binino = ialloc(T_DIR);
+	binino = ialloc(T_DIR, 0755);
 
 	bzero(&de, sizeof(de));
 	de.inum = xshort(binino);
@@ -124,7 +126,7 @@ makedirs(void)
 	iappend(rootino, &de, sizeof(de));
 
 	// /home
-	homeino = ialloc(T_DIR);
+	homeino = ialloc(T_DIR, 0755);
 
 	bzero(&de, sizeof(de));
 	de.inum = xshort(homeino);
@@ -139,6 +141,42 @@ makedirs(void)
 	bzero(&de, sizeof(de));
 	de.inum = xshort(homeino);
 	strcpy(de.name, "home");
+	iappend(rootino, &de, sizeof(de));
+
+	// /root user
+	rootuserino = ialloc(T_DIR, 0755);
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(rootuserino);
+	strcpy(de.name, ".");
+	iappend(rootuserino, &de, sizeof(de));
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(homeino);
+	strcpy(de.name, "..");
+	iappend(rootuserino, &de, sizeof(de));
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(rootuserino);
+	strcpy(de.name, "root");
+	iappend(homeino, &de, sizeof(de));
+
+	// /etc
+	etcino = ialloc(T_DIR, 0755);
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(etcino);
+	strcpy(de.name, ".");
+	iappend(etcino, &de, sizeof(de));
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(rootino);
+	strcpy(de.name, "..");
+	iappend(etcino, &de, sizeof(de));
+
+	bzero(&de, sizeof(de));
+	de.inum = xshort(etcino);
+	strcpy(de.name, "etc");
 	iappend(rootino, &de, sizeof(de));
 }
 
@@ -157,6 +195,8 @@ main(int argc, char *argv[])
 		fprintf(stderr, "Usage: mkfs fs.img files...\n");
 		exit(1);
 	}
+
+	fprintf(stderr, "%ld %ld %ld\n", sizeof(struct dinode), sizeof(uint), sizeof(short));
 
 	assert((BSIZE % sizeof(struct dinode)) == 0);
 	assert((BSIZE % sizeof(struct dirent)) == 0);
@@ -200,6 +240,13 @@ main(int argc, char *argv[])
 		else
 			shortname = argv[i];
 
+		if(strncmp(argv[i], "cfg/", 4) == 0) {
+			shortname += 4;
+			dirino = etcino;
+		} else {
+			dirino = rootuserino;
+		}
+
 		assert(index(shortname, '/') == 0);
 
 		if((fd = open(argv[i], 0)) < 0){
@@ -207,20 +254,19 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 
-		dirino = homeino;
-
 		// Skip leading _ in name when writing to file system.
 		// The binaries are named _rm, _cat, etc. to keep the
 		// build operating system from trying to execute them
 		// in place of system binaries like rm and cat.
 		if(shortname[0] == '_') {
 			shortname += 1;
-			// Binaries get copied into /bin, everything
-			// else goes into /home.
+			// Binaries get copied into /bin, 
+			// configs go into /etc, everything
+			// else goes into /home/root.
 			dirino = binino;
 		}
 
-		inum = ialloc(T_FILE);
+		inum = ialloc(T_FILE, dirino == binino ? 0775 : 0644);
 
 		bzero(&de, sizeof(de));
 		de.inum = xshort(inum);
@@ -292,7 +338,7 @@ rsect(uint sec, void *buf)
 }
 
 uint
-ialloc(ushort type)
+ialloc(ushort type, int permission)
 {
 	uint inum = freeinode++;
 	struct dinode din;
@@ -301,6 +347,7 @@ ialloc(ushort type)
 	din.type = xshort(type);
 	din.nlink = xshort(1);
 	din.size = xint(0);
+	din.mode = permission;
 	winode(inum, &din);
 	return inum;
 }

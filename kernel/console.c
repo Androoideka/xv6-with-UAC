@@ -15,9 +15,10 @@
 #include "proc.h"
 #include "x86.h"
 
-static void consputc(int);
+static void consputc(int, int);
 
 static int panicked = 0;
+static int visible = 1;
 
 static struct {
 	struct spinlock lock;
@@ -46,7 +47,7 @@ printint(int xx, int base, int sign)
 		buf[i++] = '-';
 
 	while(--i >= 0)
-		consputc(buf[i]);
+		consputc(buf[i], 1);
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
@@ -67,7 +68,7 @@ cprintf(char *fmt, ...)
 	argp = (uint*)(void*)(&fmt + 1);
 	for(i = 0; (c = fmt[i] & 0xff) != 0; i++){
 		if(c != '%'){
-			consputc(c);
+			consputc(c, 1);
 			continue;
 		}
 		c = fmt[++i] & 0xff;
@@ -79,21 +80,21 @@ cprintf(char *fmt, ...)
 			break;
 		case 'x':
 		case 'p':
-			printint(*argp++, 16, 0);
+			printint(*argp++, 2, 0);
 			break;
 		case 's':
 			if((s = (char*)*argp++) == 0)
 				s = "(null)";
 			for(; *s; s++)
-				consputc(*s);
+				consputc(*s, 1);
 			break;
 		case '%':
-			consputc('%');
+			consputc('%', 1);
 			break;
 		default:
 			// Print unknown % sequence to draw attention.
-			consputc('%');
-			consputc(c);
+			consputc('%', 1);
+			consputc(c, 1);
 			break;
 		}
 	}
@@ -160,8 +161,34 @@ cgaputc(int c)
 	crt[pos] = ' ' | 0x0700;
 }
 
+int 
+sys_clrscr(void) {
+	int pos = 0;
+
+	memset(crt, 0, sizeof(crt[0]) * 24*80);
+
+	outb(CRTPORT, 14);
+	outb(CRTPORT+1, pos>>8);
+	outb(CRTPORT, 15);
+	outb(CRTPORT+1, pos);
+
+	return 0;
+}
+
+int
+sys_hideinp(void) {
+	visible = 0;
+	return 0;
+}
+
+int
+sys_showinp(void) {
+	visible = 1;
+	return 0;
+}
+
 void
-consputc(int c)
+consputc(int c, int show)
 {
 	if(panicked){
 		cli();
@@ -173,7 +200,9 @@ consputc(int c)
 		uartputc('\b'); uartputc(' '); uartputc('\b');
 	} else
 		uartputc(c);
-	cgaputc(c);
+	if(show) {
+		cgaputc(c);
+	}
 }
 
 #define INPUT_BUF 128
@@ -202,20 +231,20 @@ consoleintr(int (*getc)(void))
 			while(input.e != input.w &&
 			      input.buf[(input.e-1) % INPUT_BUF] != '\n'){
 				input.e--;
-				consputc(BACKSPACE);
+				consputc(BACKSPACE, visible);
 			}
 			break;
 		case C('H'): case '\x7f':  // Backspace
 			if(input.e != input.w){
 				input.e--;
-				consputc(BACKSPACE);
+				consputc(BACKSPACE, visible);
 			}
 			break;
 		default:
 			if(c != 0 && input.e-input.r < INPUT_BUF){
 				c = (c == '\r') ? '\n' : c;
 				input.buf[input.e++ % INPUT_BUF] = c;
-				consputc(c);
+				consputc(c, visible);
 				if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
 					input.w = input.e;
 					wakeup(&input.r);
@@ -276,7 +305,7 @@ consolewrite(struct inode *ip, char *buf, int n)
 	iunlock(ip);
 	acquire(&cons.lock);
 	for(i = 0; i < n; i++)
-		consputc(buf[i] & 0xff);
+		consputc(buf[i] & 0xff, 1);
 	release(&cons.lock);
 	ilock(ip);
 

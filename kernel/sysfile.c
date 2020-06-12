@@ -263,10 +263,14 @@ create(char *path, short type, short major, short minor)
 	ip->major = major;
 	ip->minor = minor;
 	ip->nlink = 1;
+	ip->uid = myproc()->uid;
+	ip->gid = myproc()->uid;
+	ip->mode = 0644;
 	iupdate(ip);
 
 	if(type == T_DIR){  // Create . and .. entries.
 		dp->nlink++;  // for ".."
+		ip->mode = 0755;
 		iupdate(dp);
 		// No ip->nlink++ for ".": avoid cyclic ref count.
 		if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
@@ -306,6 +310,24 @@ sys_open(void)
 			return -1;
 		}
 		ilock(ip);
+
+		if(myproc()->euid != 0 && (ip->mode & omode) != omode) {
+			int mode = omode << 6;
+			if(myproc()->euid != ip->uid || (ip->mode & mode) != mode) {
+				int flag = 0;
+				mode = omode << 3;
+				for(int i = 0; i < myproc()->ngroups; i++) {
+					if(myproc()->gids[i] == ip->gid && (ip->mode & mode) == mode) {
+						flag = 1;
+					}
+				}
+				if(flag != 1) {
+					iunlockput(ip);
+					end_op();
+					return -1;
+				}
+			}
+		}
 		if(ip->type == T_DIR && omode != O_RDONLY){
 			iunlockput(ip);
 			end_op();
@@ -326,8 +348,8 @@ sys_open(void)
 	f->type = FD_INODE;
 	f->ip = ip;
 	f->off = 0;
-	f->readable = !(omode & O_WRONLY);
-	f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+	f->readable = omode & O_RDONLY;
+	f->writable = omode & O_WRONLY;
 	return fd;
 }
 
@@ -385,6 +407,19 @@ sys_chdir(void)
 		end_op();
 		return -1;
 	}
+	if(!(ip->mode & 1) && (myproc()->euid != ip->uid || !(ip->mode & (1 << 6)))) {
+		int flag = 0;
+		for(int i = 0; i < myproc()->ngroups; i++) {
+			if(myproc()->gids[i] == ip->gid && ip->mode & (1 << 3)) {
+				flag = 1;
+			}
+		}
+		if(flag != 1) {
+			iunlockput(ip);
+			end_op();
+			return -1;
+		}
+	}
 	iunlock(ip);
 	iput(curproc->cwd);
 	end_op();
@@ -439,5 +474,93 @@ sys_pipe(void)
 	}
 	fd[0] = fd0;
 	fd[1] = fd1;
+	return 0;
+}
+
+int
+sys_chmod(void) {
+	char *path;
+	int mode;
+	struct inode *ip;
+
+	if(argstr(0, &path) < 0 || argint(1, &mode) < 0)
+		return -1;
+
+	begin_op();
+	if((ip = namei(path)) == 0){
+		end_op();
+		return -1;
+	}
+	if(myproc()->euid != 0 && ip->uid != myproc()->uid) {
+		end_op();
+		return -1;
+	}
+
+	ilock(ip);
+	ip->mode = mode;
+	iupdate(ip);
+	iunlock(ip);
+	end_op();
+	return 0;
+}
+
+int
+sys_chown(void) {
+	char *path;
+	int owner;
+	int group;
+	struct inode *ip;
+
+	if(argstr(0, &path) < 0 || argint(1, &owner) < 0 || argint(2, &group))
+		return -1;
+
+	if(myproc()->euid != 0)
+		return -1;
+
+	begin_op();
+	if((ip = namei(path)) == 0){
+		end_op();
+		return -1;
+	}
+
+	ilock(ip);
+	ip->uid = owner;
+	ip->gid = group;
+	iupdate(ip);
+	iunlock(ip);
+	end_op();
+	return 0;
+}
+
+int
+sys_lseek(void) {
+	struct file *f;
+	int offset;
+	int whence;
+
+	if(argfd(0, 0, &f) < 0 || argint(1, &offset) < 0 || argint(2, &whence) < 0)
+		return -1;
+	
+	if(whence == SEEK_SET) {
+		f->off = (uint)offset;
+	} else if(whence == SEEK_CUR) {
+		f->off = f->off + offset;
+	} else if(whence == SEEK_END) {
+		f->off = f->ip->size + offset;
+	}
+	return 0;
+}
+
+int
+sys_trim(void) {
+	struct file *f;
+	if(argfd(0, 0, &f) < 0)
+		return -1;
+	begin_op();
+	ilock(f->ip);
+	f->ip->size = f->off;
+	iupdate(f->ip);
+	iunlock(f->ip);
+	end_op();
 	return 0;
 }
